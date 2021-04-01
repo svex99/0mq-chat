@@ -24,13 +24,6 @@ class Client:
         self.socket.connect(f'tcp://{ip}:{port}')
         logging.info('Connection ready.')
 
-        identity = self.name + str(random.randint(0, 1000))
-        self.socket.setsockopt_string(
-            option=zmq.IDENTITY,
-            optval=identity
-        )
-        logging.info(f'Identity setted to {identity}')
-
     async def run_sender(self):
         while True:
             text = await ainput('')

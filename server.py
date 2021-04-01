@@ -7,6 +7,7 @@ logging.basicConfig(
     format='[%(levelname) 5s/%(asctime)s] %(name)s: %(message)s',
     level=logging.INFO
 )
+session_file = 'server_session.json'
 
 
 class Server:
@@ -21,39 +22,74 @@ class Server:
         self.socket.bind(f'tcp://*:{self.addr[1]}')
         logging.info(f'[{self.name}] binded to {self.addr}')
 
+        for client in self.clients:
+            self.socket.send(client, zmq.SNDMORE)
+            self.socket.send_json({
+                "name": self.name,
+                "text": 'Server is on.\n'
+            })
+
         while True:
             client_id = self.socket.recv()
+
+            print('-' * 30)
+
             data = {k: v for k, v in self.socket.recv_json().items()}
             logging.info(f'Data received from [{client_id}] {data}')
 
-            if 'auth' in data or client_id not in self.clients:
-                if data['auth'] or client_id not in self.clients:
-                    self.clients.append(client_id)
-                elif not data['auth']:
-                    try:
-                        self.clients.remove(client_id)
-                    except ValueError:
-                        logging.warning('Disconnected client of previous session.')
-                        pass
+            is_auth = data.get('auth', None)
+            joined = None
+            if is_auth == 1 or (is_auth is None and client_id not in self.clients):
+                self.clients.append(client_id)
+                joined = True
+                self.socket.send(client_id, zmq.SNDMORE)
+                self.socket.send_json(
+                    {
+                        'name': self.name,
+                        'text': f'You are now online. {len(self.clients)} online.\n'
+                    }
+                )
+            elif is_auth == 0:
+                try:
+                    self.clients.remove(client_id)
+                    joined = False
+                except ValueError:
+                    logging.warning('Disconnected client of previous session.')
+                    pass
 
-                msg = f'{data["name"]} {"joined" if data["auth"] else "left"} the room. ' \
+            if joined is not None:
+                msg = f'{data["name"]} {"joined" if joined else "left"} the room. ' \
                     f'{len(self.clients)} online.'
 
-                data.pop('auth')
-                data = {
+                join_data = {
                     'name': self.name,
                     'text': msg + '\n'
                 }
+                for client in self.clients:
+                    if client != client_id:
+                        self.socket.send(client, zmq.SNDMORE)
+                        self.socket.send_json(join_data)
 
                 logging.info(msg)
 
-            count = 0
-            for client in self.clients:
-                if client != client_id:
-                    self.socket.send(client, zmq.SNDMORE)
-                    self.socket.send_json(data)
-                    count += 1
-            logging.info(f'Delivered data from [{client_id}] to {count} clients.')
+            if is_auth is None:
+                count = 0
+                for client in self.clients:
+                    if client != client_id:
+                        self.socket.send(client, zmq.SNDMORE)
+                        self.socket.send_json(data)
+                        count += 1
+
+                logging.info(f'Delivered data from [{client_id}] to {count} clients.')
+
+    def disconnect(self):
+        for client in self.clients:
+            self.socket.send(client, zmq.SNDMORE)
+            self.socket.send_json({
+                "name": self.name,
+                "text": 'Server is off.\n'
+            })
+        self.socket.close(linger=1)
 
 
 if __name__ == '__main__':
@@ -61,9 +97,11 @@ if __name__ == '__main__':
 
     parser = ArgumentParser()
     parser.add_argument('--port', type=int, help='Server port')
-    parser.add_argument('--ip', default='*', help='Server IP')
+    parser.add_argument('--ip', default='*', help='Server IP. Use \'all\' for *')
     parser.add_argument('--name', type=str, default='server', help='Server name')
+    
     args = parser.parse_args()
+    args.ip = '*' if args.ip == 'all' else args.ip
 
     server = Server(
         name=args.name,
@@ -74,4 +112,5 @@ if __name__ == '__main__':
     try:
         server.start()
     except KeyboardInterrupt:
+        server.disconnect()
         logging.info('Server stopped by user!')

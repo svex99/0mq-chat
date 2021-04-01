@@ -24,7 +24,7 @@ class P2PClient:
         if is_server:
             self.socket.bind(f'tcp://*:{port}')
             logging.info('Socket binded.')
-        else:   
+        else:
             self.socket.connect(f'tcp://{ip}:{port}')
             logging.info('Connection ready.')
 
@@ -47,22 +47,30 @@ class P2PClient:
         loop.create_task(self.run_receiver())
         loop.create_task(self.run_sender())
 
+    async def disconnect(self):
+        await self.socket.send_json(
+            {
+                'name': self.name,
+                'text': 'I\'m off.'
+            }
+        )
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
 
     parser = ArgumentParser()
     parser.add_argument('--name', help='Client name')
-    parser.add_argument('--port', help='Port of this client/server')
-    parser.add_argument('--ip', required=False, help='IP of server')
+    parser.add_argument('--port', type=int, help='Port of this client/server')
+    parser.add_argument('--ip', help='IP of server. Use \'all\' for *')
     parser.add_argument('--server', action='store_true', help='If present this will be a server')
 
     args = parser.parse_args()
+    args.ip = '*' if args.ip == 'all' else args.ip
 
     clt = P2PClient(
         name=args.name,
-        port=int(args.port),
-        ip=args.ip or 'localhost',
+        port=args.port,
+        ip=args.ip,
         is_server=args.server
     )
 
