@@ -22,13 +22,6 @@ class Server:
         self.socket.bind(f'tcp://*:{self.addr[1]}')
         logging.info(f'[{self.name}] binded to {self.addr}')
 
-        for client in self.clients:
-            self.socket.send(client, zmq.SNDMORE)
-            self.socket.send_json({
-                "name": self.name,
-                "text": 'Server is on.\n'
-            })
-
         while True:
             client_id = self.socket.recv()
 
@@ -99,7 +92,7 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, help='Server port')
     parser.add_argument('--ip', default='*', help='Server IP. Use \'all\' for *')
     parser.add_argument('--name', type=str, default='server', help='Server name')
-    
+
     args = parser.parse_args()
     args.ip = '*' if args.ip == 'all' else args.ip
 
